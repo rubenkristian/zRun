@@ -3,6 +3,39 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+
+    var microcore_features = std.Target.Cpu.Feature.Set.empty;
+    microcore_features.addFeature(@intCast(@backingInt(std.Target.aarch64.Feature.strict_align)));
+    const microcore_target = b.resolveTargetQuery(.{
+        .cpu_arch = .aarch64,
+        .os_tag = .linux,
+        .abi = .gnu,
+        .cpu_model = .{ .explicit = &std.Target.aarch64.cpu.cortex_a53 },
+        .cpu_features_add = microcore_features,
+    });
+    // ET_DYN preserves AArch64 R_RELATIVE entries for the MCB v2 packer.
+    const microcore_vm_module = b.createModule(.{
+        .root_source_file = b.path("src/microcore_vm.zig"),
+        .target = microcore_target,
+        .optimize = .ReleaseSmall,
+        .pic = true,
+        .single_threaded = true,
+    });
+    const microcore_vm_elf = b.addLibrary(.{
+        .name = "zrun-vm-microcore",
+        .root_module = microcore_vm_module,
+        .linkage = .dynamic,
+    });
+    microcore_vm_elf.setLinkerScript(b.path("microcore_native_block.ld"));
+    microcore_vm_elf.entry = .disabled;
+
+    const pack_microcore_vm = b.addSystemCommand(&.{ "python3" });
+    pack_microcore_vm.addFileArg(.{ .cwd_relative = "../../../../rd/microcore/tools/pack_mcb.py" });
+    pack_microcore_vm.addFileArg(microcore_vm_elf.getEmittedBin());
+    const microcore_vm_block = pack_microcore_vm.addOutputFileArg("zrun-vm.mcb");
+    const install_microcore_vm = b.addInstallFile(microcore_vm_block, "blocks/zrun-vm.mcb");
+    const microcore_vm_step = b.step("microcore-vm", "Build the zRun bytecode VM as an AArch64 Microcore MCB block");
+    microcore_vm_step.dependOn(&install_microcore_vm.step);
     const runtime_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,

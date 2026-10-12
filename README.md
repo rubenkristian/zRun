@@ -112,14 +112,14 @@ and are not internally synchronized.
 
 | Area | Implemented features |
 |---|---|
-| Arrays | &bull; Literals, indexing, mutation, and `length`<br>&bull; `Array(...)`, `Array.isArray`, and spread<br>&bull; `push`, `map`, `filter`, `find`, `flatMap`, and `reduce`<br>&bull; `includes`, `join`, `slice`, `some`, and `sort`<br>&bull; `concat`, `indexOf`, and `shift` |
-| Plain objects | &bull; Object literals, shorthand fields, and concise methods<br>&bull; Computed keys and computed methods<br>&bull; Object spread<br>&bull; Property reads and writes |
+| Arrays | &bull; Literals, indexing, mutation, and `length`<br>&bull; `Array(...)`, `Array.from`, `Array.isArray`, and spread<br>&bull; `push`, `map`, `filter`, `find`, `flatMap`, and `reduce`<br>&bull; `includes`, `join`, `slice`, `some`, and `sort`<br>&bull; `concat`, `indexOf`, and `shift` |
+| Plain objects | &bull; Object literals, shorthand fields, and concise methods<br>&bull; Computed keys and computed methods<br>&bull; Object spread<br>&bull; Property reads, writes, and `delete` on local or `this` object properties |
 | `Map` | &bull; Construction and iterable initialization<br>&bull; `set`, `get`, and `has`<br>&bull; `keys` iterator |
-| `Set` | &bull; Construction and iterable initialization<br>&bull; `add` and `has`<br>&bull; `values` iterator |
+| `Set` | &bull; Construction and iterable initialization<br>&bull; `add`, `has`, and `delete`<br>&bull; `values` iterator |
 | `WeakMap` | &bull; Construction<br>&bull; `set`, `get`, and `has` |
 | Regular expressions | &bull; Literal patterns with `i`/`g` flags<br>&bull; `.test()`<br>&bull; String replacement operations |
 
-Coverage: [arrays and objects](verification/02_language/arrays.js), [collections](verification/02_language/collections.js), [regular expressions](verification/02_language/regexp.js).
+Coverage: [arrays and objects](verification/02_language/arrays.js), [property deletion](verification/03_runtime/delete_property.js), [collections](verification/02_language/collections.js), [regular expressions](verification/02_language/regexp.js).
 
 ### Built-ins and host runtime
 
@@ -131,7 +131,7 @@ Coverage: [arrays and objects](verification/02_language/arrays.js), [collections
 | `Object` properties | &bull; `create`, `defineProperty`, and `getOwnPropertyDescriptor`<br>&bull; `getPrototypeOf`, `getOwnPropertyNames`, and `hasOwnProperty`<br>&bull; Shared ordinary-object prototype exposed as `Object.prototype` |
 | `Array` | &bull; `isArray` |
 | `JSON` | &bull; `parse` and `stringify` |
-| `Math` | &bull; `imul` and `random` |
+| `Math` | &bull; `imul`, `max`, `min`, and `random` |
 | Conversion and encoding | &bull; `Boolean`, `String`, and `Number` conversion<br>&bull; `encodeURIComponent` |
 | Host integration | &bull; `print`<br>&bull; The `__host` bridge and `--host-json` input |
 
@@ -288,6 +288,16 @@ zig build compile-bench -Doptimize=fast
 | MQuickJS language features | 15 | geometric mean `0.56x` | Source compile and execution; 2 warmups, 7 timed runs |
 | Official QuickJS CLI | 4 | geometric mean `0.91x` | Source compile and execution; 3 warmups, 11 timed runs |
 | Compile-only comparison | 4 | geometric mean `0.60x` | MQuickJS C `-O3` vs zRun Zig `ReleaseFast`; 15 timed runs |
+
+A fresh `run.py --suite all` comparison on 2026-10-09 covered all 19 CLI and
+feature workloads with 3 warmups and 21 measured runs. Both engines produced
+matching output for every workload. Each engine compiled its own artifact;
+medians include compiler startup in the compile phase and runtime startup plus
+artifact loading in the execution phase. zRun/MQuickJS geometric-mean time was
+`1.068x` for compilation, `1.561x` for execution, and `1.505x` combined. The
+[raw samples and per-workload results](performance/checkpoints/2026-10-09-run-all/results.json)
+show execution ahead on `cli/arithmetic.js` and `features/json.js`; the largest
+gaps are object, string, and lowered-spread workloads.
 
 The internal VM microbenchmarks run with `zig build bench -Doptimize=fast`. Additional workloads and Python runners are in [`performance/`](performance/); [detailed results and methodology](performance/knolage/README.md) include historical measurements. Cross-engine comparisons require separately installed MQuickJS or QuickJS executables; the zRun build and verification suite do not depend on them.
 

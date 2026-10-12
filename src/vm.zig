@@ -15,6 +15,10 @@ const ExecutionStack = @import("vm/stack.zig").Stack;
 const ascii_chars = makeAsciiChars();
 const inline_execution_stack_capacity = 16;
 
+fn debugPrint(comptime format: []const u8, arguments: anytype) void {
+    if (builtin.mode == .debug) std.debug.print(format, arguments);
+}
+
 pub const FunctionBytecode = struct {
     artifact_id: u32 = 0,
     name: []const u8 = "",
@@ -433,7 +437,7 @@ pub const VM = struct {
         var captured_cells = frame.captured_cells;
         var last_opcode: ?Opcode = null;
         errdefer if (last_opcode) |failed_opcode| {
-            std.debug.print("VM failure in {s} at pc={d}, opcode={s}, stack={d}, code={d}\n", .{
+            debugPrint("VM failure in {s} at pc={d}, opcode={s}, stack={d}, code={d}\n", .{
                 function.name, pc, @tagName(failed_opcode), stack.len, function.code.len,
             });
         };
@@ -685,7 +689,7 @@ pub const VM = struct {
                         break :length_property Value.fromInt(as_i32) orelse return error.IntegerOverflow;
                     } else self.resolveMethod(objects, object_value, property_name, &method_cache, &method_cache_next) orelse
                         if (object_value.isNull() or object_value.isUndefined()) {
-                            std.debug.print("nullish receiver for field {s} at pc={d}\n", .{ property_name, pc });
+                            debugPrint("nullish receiver for field {s} at pc={d}\n", .{ property_name, pc });
                             return error.TypeError;
                         } else Value.undefined_value;
                     try self.push(&stack, function.max_stack, property_value);
@@ -696,7 +700,7 @@ pub const VM = struct {
                     const property_name = findString(function.*, function.constants[property_index]) orelse return error.TypeError;
                     const object_value = try self.pop(&stack);
                     const method = self.resolveMethod(objects, object_value, property_name, &method_cache, &method_cache_next) orelse {
-                        std.debug.print("missing method {s} receiver={x} at pc={d}\n", .{ property_name, object_value.raw(), pc });
+                        debugPrint("missing method {s} receiver={x} at pc={d}\n", .{ property_name, object_value.raw(), pc });
                         return error.TypeError;
                     };
                     try self.push(&stack, function.max_stack, object_value);
@@ -1062,11 +1066,11 @@ pub const VM = struct {
                                 this_value,
                                 stack.storage[callee_index + 1 .. stack.len],
                             ) catch |err| {
-                                std.debug.print("native method index {d} failed: {s}\n", .{ native_index, @errorName(err) });
+                                debugPrint("native method index {d} failed: {s}\n", .{ native_index, @errorName(err) });
                                 return error.NativeFunctionFailed;
                             };
                         } else self.native_functions[native_index](&native_context, stack.storage[callee_index + 1 .. stack.len]) catch |err| {
-                            std.debug.print("native call {d} failed: {s}\n", .{ native_index, @errorName(err) });
+                            debugPrint("native call {d} failed: {s}\n", .{ native_index, @errorName(err) });
                             return error.NativeFunctionFailed;
                         };
                         stack.truncate(callee_position);
@@ -1138,7 +1142,7 @@ pub const VM = struct {
                             .execution_stats = if (collect_stats) stats else null,
                         };
                         const result = self.native_functions[native_index](&native_context, argument_array.items.items) catch |err| {
-                            std.debug.print("native spread call {d} failed: {s}\n", .{ native_index, @errorName(err) });
+                            debugPrint("native spread call {d} failed: {s}\n", .{ native_index, @errorName(err) });
                             return error.NativeFunctionFailed;
                         };
                         try self.push(&stack, function.max_stack, result);
@@ -1432,7 +1436,7 @@ pub const VM = struct {
                     return .{ .suspended = .{ .continuation = state, .awaited = awaited } };
                 },
                 else => {
-                    std.debug.print("unsupported upstream opcode {s} ({d}) in {s} at {d}\n", .{ @tagName(opcode), opcode_byte, function.name, pc - 1 });
+                    debugPrint("unsupported upstream opcode {s} ({d}) in {s} at {d}\n", .{ @tagName(opcode), opcode_byte, function.name, pc - 1 });
                     return error.UnsupportedOpcode;
                 },
             }
@@ -1603,7 +1607,7 @@ pub const VM = struct {
             inline_arguments[0] = receiver;
             @memcpy(inline_arguments[1 .. arguments.len + 1], arguments);
             return function(context, inline_arguments[0 .. arguments.len + 1]) catch |err| {
-                std.debug.print("native method failed: {s}\n", .{@errorName(err)});
+                debugPrint("native method failed: {s}\n", .{@errorName(err)});
                 return error.NativeFunctionFailed;
             };
         }
@@ -1612,7 +1616,7 @@ pub const VM = struct {
         result[0] = receiver;
         @memcpy(result[1..], arguments);
         return function(context, result) catch |err| {
-            std.debug.print("native method failed: {s}\n", .{@errorName(err)});
+            debugPrint("native method failed: {s}\n", .{@errorName(err)});
             return error.NativeFunctionFailed;
         };
     }
