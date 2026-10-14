@@ -3,10 +3,15 @@
 const std = @import("std");
 const artifact = @import("artifact.zig");
 const execution = @import("execution.zig");
+const vm = @import("vm.zig");
 
 // Keep the initial runtime heap bounded. This lives in the MCB's zeroed image
 // memory and is separate from the bytecode data block supplied by the caller.
 var runtime_memory: [8 * 1024 * 1024]u8 align(16) = undefined;
+// Decoded bytecode outlives each request. Keep its allocations separate from
+// the request arena, which is reset after execution.
+var artifact_memory: [256 * 1024]u8 align(16) = undefined;
+var cached_function: ?vm.FunctionBytecode = null;
 
 // The MCB image is linked as ET_DYN to retain relocation records. This stub
 // satisfies Zig's Linux stdlib fallback; the freestanding VM does not call it.
@@ -38,18 +43,21 @@ export fn microcore_entry(block_address: [*]u8, block_capacity: usize) callconv(
     const artifact_bytes = block_address[artifact_start..output_start];
     const output_bytes = block_address[output_start .. output_start + output_capacity];
 
+    if (cached_function == null) {
+        var artifact_allocator = std.heap.FixedBufferAllocator.init(&artifact_memory);
+        cached_function = artifact.load(artifact_allocator.allocator(), artifact_bytes) catch return 1;
+    }
+
     var fixed = std.heap.FixedBufferAllocator.init(&runtime_memory);
     var arena = std.heap.ArenaAllocator.init(fixed.allocator());
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const function = artifact.load(allocator, artifact_bytes) catch return 1;
-
     // The host program can forward this output through a device or bus.
     var output = std.Io.Writer.fixed(output_bytes);
     var error_buffer: [128]u8 = undefined;
     var errors = std.Io.Writer.Discarding.init(&error_buffer);
-    const uncaught = execution.execute(allocator, function, &output, &errors.writer, "") catch return 2;
+    const uncaught = execution.execute(allocator, cached_function.?, &output, &errors.writer, "") catch return 2;
     header.output_length = @intCast(output.end);
     return if (uncaught) 3 else 0;
 }
